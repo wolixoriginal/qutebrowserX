@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2015-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -21,7 +19,9 @@
 
 import functools
 
-from PyQt5.QtWebKit import QWebHistoryInterface
+# pylint: disable=no-name-in-module
+from qutebrowser.qt.webkit import QWebHistoryInterface
+# pylint: enable=no-name-in-module
 
 from qutebrowser.utils import debug
 from qutebrowser.misc import debugcachestats

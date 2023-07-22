@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -29,7 +27,7 @@ import subprocess
 import tokenize
 import traceback
 import pathlib
-from typing import List, Iterator, Optional
+from typing import List, Iterator, Optional, Tuple
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -94,6 +92,9 @@ def check_changelog_urls(_args: argparse.Namespace = None) -> bool:
                 req, _version = recompile_requirements.parse_versioned_line(line)
                 if req.startswith('./'):
                     continue
+                if " @ " in req:  # vcs URL
+                    req = req.split(" @ ")[0]
+
                 all_requirements.add(req)
                 if req not in recompile_requirements.CHANGELOG_URLS:
                     missing.add(req)
@@ -149,6 +150,24 @@ def _check_spelling_file(path, fobj, patterns):
                 print(f'{path}:{num}: ', end='')
                 utils.print_col(f'Found "{match.group(0)}" - {explanation}', 'blue')
     return ok
+
+
+def _check_spelling_all(
+    args: argparse.Namespace,
+    ignored: List[pathlib.Path],
+    patterns: List[Tuple[re.Pattern, str]],
+) -> Optional[bool]:
+    try:
+        ok = True
+        for path in _get_files(verbose=args.verbose, ignored=ignored):
+            with tokenize.open(str(path)) as f:
+                if not _check_spelling_file(path, f, patterns):
+                    ok = False
+        print()
+        return ok
+    except Exception:
+        traceback.print_exc()
+        return None
 
 
 def check_spelling(args: argparse.Namespace) -> Optional[bool]:
@@ -266,22 +285,33 @@ def check_spelling(args: argparse.Namespace) -> Optional[bool]:
     hint_data = pathlib.Path('tests', 'end2end', 'data', 'hints')
     ignored = [
         pathlib.Path('scripts', 'dev', 'misc_checks.py'),
+        pathlib.Path('scripts', 'dev', 'enums.txt'),
         pathlib.Path('qutebrowser', '3rdparty', 'pdfjs'),
+        pathlib.Path('qutebrowser', 'qt', '_core_pyqtproperty.py'),
         hint_data / 'ace' / 'ace.js',
         hint_data / 'bootstrap' / 'bootstrap.css',
     ]
+    return _check_spelling_all(args=args, ignored=ignored, patterns=patterns)
 
-    try:
-        ok = True
-        for path in _get_files(verbose=args.verbose, ignored=ignored):
-            with tokenize.open(path) as f:
-                if not _check_spelling_file(path, f, patterns):
-                    ok = False
-        print()
-        return ok
-    except Exception:
-        traceback.print_exc()
-        return None
+
+def check_pyqt_imports(args: argparse.Namespace) -> Optional[bool]:
+    """Check for direct PyQt imports."""
+    ignored = [
+        pathlib.Path("qutebrowser", "qt"),
+        pathlib.Path("misc", "userscripts"),
+        pathlib.Path("scripts"),
+    ]
+    patterns = [
+        (
+            re.compile(r"from PyQt.* import"),
+            "Use 'from qutebrowser.qt.MODULE import ...' instead",
+        ),
+        (
+            re.compile(r"import PyQt.*"),
+            "Use 'import qutebrowser.qt.MODULE' instead",
+        )
+    ]
+    return _check_spelling_all(args=args, ignored=ignored, patterns=patterns)
 
 
 def check_vcs_conflict(args: argparse.Namespace) -> Optional[bool]:
@@ -366,14 +396,35 @@ def check_userscript_shebangs(_args: argparse.Namespace) -> bool:
     return ok
 
 
+def check_vim_modelines(args: argparse.Namespace) -> bool:
+    """Check that we're not using vim modelines."""
+    ok = True
+    try:
+        for path in _get_files(verbose=args.verbose):
+            with tokenize.open(str(path)) as f:
+                for num, line in enumerate(f, start=1):
+                    if not line.startswith("# vim:"):
+                        continue
+                    print(f"{path}:{num}: Remove vim modeline "
+                          "(deprecated in favor of .editorconfig)")
+                    ok = False
+    except Exception:
+        traceback.print_exc()
+        ok = False
+
+    return ok
+
+
 def main() -> int:
     checkers = {
         'git': check_git,
         'vcs': check_vcs_conflict,
         'spelling': check_spelling,
+        'pyqt-imports': check_pyqt_imports,
         'userscript-descriptions': check_userscripts_descriptions,
         'userscript-shebangs': check_userscript_shebangs,
         'changelog-urls': check_changelog_urls,
+        'vim-modelines': check_vim_modelines,
     }
 
     parser = argparse.ArgumentParser()

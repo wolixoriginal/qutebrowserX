@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -30,8 +28,8 @@ import shlex
 import math
 import operator
 
-from PyQt5.QtCore import QUrl, QRect, QPoint
-from PyQt5.QtGui import QClipboard
+from qutebrowser.qt.core import QUrl, QRect, QPoint
+from qutebrowser.qt.gui import QClipboard
 import pytest
 import hypothesis
 from hypothesis import strategies, settings
@@ -683,7 +681,7 @@ class TestGetSetClipboard:
     def test_set(self, clipboard_mock, caplog):
         utils.set_clipboard('Hello World')
         clipboard_mock.setText.assert_called_with('Hello World',
-                                                  mode=QClipboard.Clipboard)
+                                                  mode=QClipboard.Mode.Clipboard)
         assert not caplog.records
 
     def test_set_unsupported_selection(self, clipboard_mock):
@@ -774,7 +772,7 @@ class TestOpenFile:
 
     @pytest.fixture
     def openurl_mock(self, mocker):
-        return mocker.patch('PyQt5.QtGui.QDesktopServices.openUrl', spec={},
+        return mocker.patch('qutebrowser.qt.gui.QDesktopServices.openUrl', spec={},
                             new_callable=mocker.Mock)
 
     def test_system_default_application(self, caplog, config_stub,

@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -21,7 +19,7 @@
 
 import enum
 
-from PyQt5.QtCore import pyqtSlot, pyqtProperty, QUrl
+from qutebrowser.qt.core import pyqtSlot, pyqtProperty, QUrl
 
 from qutebrowser.mainwindow.statusbar import textbase
 from qutebrowser.config import stylesheet
@@ -118,7 +116,9 @@ class UrlText(textbase.TextBase):
         if old_urltype != self._urltype:
             # We can avoid doing an unpolish here because the new style will
             # always override the old one.
-            self.style().polish(self)
+            style = self.style()
+            assert style is not None
+            style.polish(self)
 
     @pyqtSlot(usertypes.LoadStatus)
     def on_load_status_changed(self, status):

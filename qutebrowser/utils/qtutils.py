@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -29,22 +27,26 @@ Module attributes:
 
 
 import io
+import enum
+import pathlib
 import operator
 import contextlib
 from typing import (Any, AnyStr, TYPE_CHECKING, BinaryIO, IO, Iterator,
-                    Optional, Union, Tuple, cast)
+                    Optional, Union, Tuple, Protocol, cast, TypeVar)
 
-from PyQt5.QtCore import (qVersion, QEventLoop, QDataStream, QByteArray,
+from qutebrowser.qt import machinery, sip
+from qutebrowser.qt.core import (qVersion, QEventLoop, QDataStream, QByteArray,
                           QIODevice, QFileDevice, QSaveFile, QT_VERSION_STR,
-                          PYQT_VERSION_STR, QObject, QUrl)
-from PyQt5.QtGui import QColor
+                          PYQT_VERSION_STR, QObject, QUrl, QLibraryInfo)
+from qutebrowser.qt.gui import QColor
 try:
-    from PyQt5.QtWebKit import qWebKitVersion
+    from qutebrowser.qt.webkit import qWebKitVersion
 except ImportError:  # pragma: no cover
     qWebKitVersion = None  # type: ignore[assignment]  # noqa: N816
 if TYPE_CHECKING:
-    from PyQt5.QtWebKit import QWebHistory
-    from PyQt5.QtWebEngineWidgets import QWebEngineHistory
+    from qutebrowser.qt.webkit import QWebHistory
+    from qutebrowser.qt.webenginecore import QWebEngineHistory
+    from typing_extensions import TypeGuard  # added in Python 3.10
 
 from qutebrowser.misc import objects
 from qutebrowser.utils import usertypes, utils
@@ -101,7 +103,11 @@ def version_check(version: str,
 
     parsed = utils.VersionNumber.parse(version)
     op = operator.eq if exact else operator.ge
-    result = op(utils.VersionNumber.parse(qVersion()), parsed)
+
+    qversion = qVersion()
+    assert qversion is not None
+    result = op(utils.VersionNumber.parse(qversion), parsed)
+
     if compiled and result:
         # qVersion() ==/>= parsed, now check if QT_VERSION_STR ==/>= parsed.
         result = op(utils.VersionNumber.parse(QT_VERSION_STR), parsed)
@@ -156,7 +162,7 @@ def check_overflow(arg: int, ctype: str, fatal: bool = True) -> int:
         return arg
 
 
-class Validatable(utils.Protocol):
+class Validatable(Protocol):
 
     """An object with an isValid() method (e.g. QUrl)."""
 
@@ -173,14 +179,14 @@ def ensure_valid(obj: Validatable) -> None:
 def check_qdatastream(stream: QDataStream) -> None:
     """Check the status of a QDataStream and raise OSError if it's not ok."""
     status_to_str = {
-        QDataStream.Ok: "The data stream is operating normally.",
-        QDataStream.ReadPastEnd: ("The data stream has read past the end of "
+        QDataStream.Status.Ok: "The data stream is operating normally.",
+        QDataStream.Status.ReadPastEnd: ("The data stream has read past the end of "
                                   "the data in the underlying device."),
-        QDataStream.ReadCorruptData: "The data stream has read corrupt data.",
-        QDataStream.WriteFailed: ("The data stream cannot write to the "
+        QDataStream.Status.ReadCorruptData: "The data stream has read corrupt data.",
+        QDataStream.Status.WriteFailed: ("The data stream cannot write to the "
                                   "underlying device."),
     }
-    if stream.status() != QDataStream.Ok:
+    if stream.status() != QDataStream.Status.Ok:
         raise OSError(status_to_str[stream.status()])
 
 
@@ -196,14 +202,14 @@ _QtSerializableType = Union[
 def serialize(obj: _QtSerializableType) -> QByteArray:
     """Serialize an object into a QByteArray."""
     data = QByteArray()
-    stream = QDataStream(data, QIODevice.WriteOnly)
+    stream = QDataStream(data, QIODevice.OpenModeFlag.WriteOnly)
     serialize_stream(stream, obj)
     return data
 
 
 def deserialize(data: QByteArray, obj: _QtSerializableType) -> None:
     """Deserialize an object from a QByteArray."""
-    stream = QDataStream(data, QIODevice.ReadOnly)
+    stream = QDataStream(data, QIODevice.OpenModeFlag.ReadOnly)
     deserialize_stream(stream, obj)
 
 
@@ -233,7 +239,7 @@ def savefile_open(
     f = QSaveFile(filename)
     cancelled = False
     try:
-        open_ok = f.open(QIODevice.WriteOnly)
+        open_ok = f.open(QIODevice.OpenModeFlag.WriteOnly)
         if not open_ok:
             raise QtOSError(f)
 
@@ -302,7 +308,7 @@ class PyQIODevice(io.BufferedIOBase):
     # contextlib.closing is only generic in Python 3.9+
     def open(
         self,
-        mode: QIODevice.OpenMode,
+        mode: QIODevice.OpenModeFlag,
     ) -> contextlib.closing:  # type: ignore[type-arg]
         """Open the underlying device and ensure opening succeeded.
 
@@ -367,7 +373,7 @@ class PyQIODevice(io.BufferedIOBase):
         self._check_readable()
 
         if size is None or size < 0:
-            qt_size = 0  # no maximum size
+            qt_size = None  # no maximum size
         elif size == 0:
             return b''
         else:
@@ -375,7 +381,10 @@ class PyQIODevice(io.BufferedIOBase):
 
         buf: Union[QByteArray, bytes, None] = None
         if self.dev.canReadLine():
-            buf = self.dev.readLine(qt_size)
+            if qt_size is None:
+                buf = self.dev.readLine()
+            else:
+                buf = self.dev.readLine(qt_size)
         elif size is None or size < 0:
             buf = self.dev.readAll()
         else:
@@ -450,6 +459,13 @@ class QtValueError(ValueError):
         super().__init__(err)
 
 
+if machinery.IS_QT6:
+    _ProcessEventFlagType = QEventLoop.ProcessEventsFlag
+else:
+    _ProcessEventFlagType = Union[
+        QEventLoop.ProcessEventsFlag, QEventLoop.ProcessEventsFlags]
+
+
 class EventLoop(QEventLoop):
 
     """A thin wrapper around QEventLoop.
@@ -462,14 +478,15 @@ class EventLoop(QEventLoop):
         self._executing = False
 
     def exec(
-            self,
-            flags: QEventLoop.ProcessEventsFlags =
-            cast(QEventLoop.ProcessEventsFlags, QEventLoop.AllEvents)
+        self,
+        flags: _ProcessEventFlagType = QEventLoop.ProcessEventsFlag.AllEvents,
     ) -> int:
         """Override exec_ to raise an exception when re-running."""
         if self._executing:
             raise AssertionError("Eventloop is already running!")
         self._executing = True
+        if machinery.IS_QT5:
+            flags = cast(QEventLoop.ProcessEventsFlags, flags)
         status = super().exec(flags)
         self._executing = False
         return status
@@ -503,7 +520,7 @@ def interpolate_color(
         start: QColor,
         end: QColor,
         percent: int,
-        colorspace: Optional[QColor.Spec] = QColor.Rgb
+        colorspace: Optional[QColor.Spec] = QColor.Spec.Rgb
 ) -> QColor:
     """Get an interpolated color value.
 
@@ -523,24 +540,58 @@ def interpolate_color(
 
     if colorspace is None:
         if percent == 100:
-            return QColor(*end.getRgb())
+            r, g, b, a = end.getRgb()
+            assert r is not None
+            assert g is not None
+            assert b is not None
+            assert a is not None
+            return QColor(r, g, b, a)
         else:
-            return QColor(*start.getRgb())
+            r, g, b, a = start.getRgb()
+            assert r is not None
+            assert g is not None
+            assert b is not None
+            assert a is not None
+            return QColor(r, g, b, a)
 
     out = QColor()
-    if colorspace == QColor.Rgb:
+    if colorspace == QColor.Spec.Rgb:
         r1, g1, b1, a1 = start.getRgb()
         r2, g2, b2, a2 = end.getRgb()
+        assert r1 is not None
+        assert g1 is not None
+        assert b1 is not None
+        assert a1 is not None
+        assert r2 is not None
+        assert g2 is not None
+        assert b2 is not None
+        assert a2 is not None
         components = _get_color_percentage(r1, g1, b1, a1, r2, g2, b2, a2, percent)
         out.setRgb(*components)
-    elif colorspace == QColor.Hsv:
+    elif colorspace == QColor.Spec.Hsv:
         h1, s1, v1, a1 = start.getHsv()
         h2, s2, v2, a2 = end.getHsv()
+        assert h1 is not None
+        assert s1 is not None
+        assert v1 is not None
+        assert a1 is not None
+        assert h2 is not None
+        assert s2 is not None
+        assert v2 is not None
+        assert a2 is not None
         components = _get_color_percentage(h1, s1, v1, a1, h2, s2, v2, a2, percent)
         out.setHsv(*components)
-    elif colorspace == QColor.Hsl:
+    elif colorspace == QColor.Spec.Hsl:
         h1, s1, l1, a1 = start.getHsl()
         h2, s2, l2, a2 = end.getHsl()
+        assert h1 is not None
+        assert s1 is not None
+        assert l1 is not None
+        assert a1 is not None
+        assert h2 is not None
+        assert s2 is not None
+        assert l2 is not None
+        assert a2 is not None
         components = _get_color_percentage(h1, s1, l1, a1, h2, s2, l2, a2, percent)
         out.setHsl(*components)
     else:
@@ -548,3 +599,82 @@ def interpolate_color(
     out = out.convertTo(start.spec())
     ensure_valid(out)
     return out
+
+
+class LibraryPath(enum.Enum):
+
+    """A path to be passed to QLibraryInfo.
+
+    Should mirror QLibraryPath (Qt 5) and QLibraryLocation (Qt 6).
+    Values are the respective Qt names.
+    """
+
+    prefix = "PrefixPath"
+    documentation = "DocumentationPath"
+    headers = "HeadersPath"
+    libraries = "LibrariesPath"
+    library_executables = "LibraryExecutablesPath"
+    binaries = "BinariesPath"
+    plugins = "PluginsPath"
+    qml2_imports = "Qml2ImportsPath"
+    arch_data = "ArchDataPath"
+    data = "DataPath"
+    translations = "TranslationsPath"
+    examples = "ExamplesPath"
+    tests = "TestsPath"
+    settings = "SettingsPath"
+
+
+def library_path(which: LibraryPath) -> pathlib.Path:
+    """Wrapper around QLibraryInfo.path / .location."""
+    if machinery.IS_QT6:
+        val = getattr(QLibraryInfo.LibraryPath, which.value)
+        ret = QLibraryInfo.path(val)
+    else:
+        # Qt 5
+        val = getattr(QLibraryInfo.LibraryLocation, which.value)
+        ret = QLibraryInfo.location(val)
+    assert ret
+    return pathlib.Path(ret)
+
+
+def extract_enum_val(val: Union[sip.simplewrapper, int, enum.Enum]) -> int:
+    """Extract an int value from a Qt enum value.
+
+    For Qt 5, enum values are basically Python integers.
+    For Qt 6, they are usually enum.Enum instances, with the value set to the
+    integer.
+    """
+    if isinstance(val, enum.Enum):
+        return val.value
+    elif isinstance(val, sip.simplewrapper):
+        return int(val)  # type: ignore[call-overload]
+    return val
+
+
+_T = TypeVar("_T")
+
+
+if machinery.IS_QT5:
+    # On Qt 5, add/remove Optional where type annotations don't have it.
+    # Also we have a special QT_NONE, which (being Any) we can pass to functions
+    # where PyQt type hints claim that it's not allowed.
+
+    def remove_optional(obj: Optional[_T]) -> _T:
+        return cast(_T, obj)
+
+    def add_optional(obj: _T) -> Optional[_T]:
+        return cast(Optional[_T], obj)
+
+    QT_NONE: Any = None
+else:
+    # On Qt 6, all those things are handled correctly by type annotations, so we
+    # have a no-op below.
+
+    def remove_optional(obj: Optional[_T]) -> Optional[_T]:
+        return obj
+
+    def add_optional(obj: Optional[_T]) -> Optional[_T]:
+        return obj
+
+    QT_NONE = None

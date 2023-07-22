@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 
 # This file is part of qutebrowser.
@@ -23,8 +21,7 @@
 Use python3 -m scripts.keytester to launch it.
 """
 
-from PyQt5.QtWidgets import QApplication
-
+from qutebrowser.qt.widgets import QApplication
 from qutebrowser.misc import miscwidgets
 
 app = QApplication([])

@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2015-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -17,11 +15,14 @@
 # You should have received a copy of the GNU General Public License
 # along with qutebrowser.  If not, see <https://www.gnu.org/licenses/>.
 
+
 """Customized QWebInspector for QtWebKit."""
 
-from PyQt5.QtWebKit import QWebSettings
-from PyQt5.QtWebKitWidgets import QWebInspector, QWebPage
-from PyQt5.QtWidgets import QWidget
+# pylint: disable=no-name-in-module
+from qutebrowser.qt.webkit import QWebSettings
+from qutebrowser.qt.webkitwidgets import QWebInspector, QWebPage
+# pylint: enable=no-name-in-module
+from qutebrowser.qt.widgets import QWidget
 
 from qutebrowser.browser import inspector
 from qutebrowser.misc import miscwidgets
@@ -40,5 +41,5 @@ class WebKitInspector(inspector.AbstractWebInspector):
 
     def inspect(self, page: QWebPage) -> None:
         settings = QWebSettings.globalSettings()
-        settings.setAttribute(QWebSettings.DeveloperExtrasEnabled, True)
+        settings.setAttribute(QWebSettings.WebAttribute.DeveloperExtrasEnabled, True)
         self._widget.setPage(page)

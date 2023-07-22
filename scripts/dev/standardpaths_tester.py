@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2017-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -23,7 +21,7 @@
 import os
 import sys
 
-from PyQt5.QtCore import (QT_VERSION_STR, PYQT_VERSION_STR, qVersion,
+from PyQt6.QtCore import (QT_VERSION_STR, PYQT_VERSION_STR, qVersion,
                           QStandardPaths, QCoreApplication)
 
 

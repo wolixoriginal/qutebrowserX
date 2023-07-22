@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2015-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -25,8 +23,9 @@ import contextlib
 import pathlib
 from typing import cast, Mapping, MutableSequence, Optional
 
-from PyQt5.QtCore import pyqtSlot, QUrl, QObject, pyqtSignal
-from PyQt5.QtWidgets import QProgressDialog, QApplication
+from qutebrowser.qt import machinery
+from qutebrowser.qt.core import pyqtSlot, QUrl, QObject, pyqtSignal
+from qutebrowser.qt.widgets import QProgressDialog, QApplication, QPushButton
 
 from qutebrowser.config import config
 from qutebrowser.api import cmdutils
@@ -56,7 +55,13 @@ class HistoryProgress:
         self._progress.setMaximum(0)  # unknown
         self._progress.setMinimumDuration(0)
         self._progress.setLabelText(text)
-        self._progress.setCancelButton(None)
+
+        no_button = None
+        if machinery.IS_QT6:
+            # FIXME:mypy PyQt6 stubs issue
+            no_button = cast(QPushButton, None)
+
+        self._progress.setCancelButton(no_button)
         self._progress.setAutoClose(False)
         self._progress.show()
         QApplication.processEvents()
@@ -435,10 +440,10 @@ class WebHistory(sql.SqlTable):
             }, replace=True)
 
     def _format_url(self, url):
-        return url.toString(QUrl.RemovePassword | QUrl.FullyEncoded)
+        return url.toString(QUrl.UrlFormattingOption.RemovePassword | QUrl.ComponentFormattingOption.FullyEncoded)
 
     def _format_completion_url(self, url):
-        return url.toString(QUrl.RemovePassword)
+        return url.toString(QUrl.UrlFormattingOption.RemovePassword)
 
 
 @cmdutils.register()

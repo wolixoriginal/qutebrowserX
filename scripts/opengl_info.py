@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2020-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 
 # This file is part of qutebrowser.
@@ -20,8 +18,8 @@
 
 """Show information about the OpenGL setup."""
 
-from PyQt5.QtGui import (QOpenGLContext, QOpenGLVersionProfile,
-                         QOffscreenSurface, QGuiApplication)
+from PyQt6.QtGui import QOpenGLContext, QOffscreenSurface, QGuiApplication
+from PyQt6.QtOpenGL import QOpenGLVersionProfile, QOpenGLVersionFunctionsFactory
 
 app = QGuiApplication([])
 
@@ -40,7 +38,7 @@ print(f"GLES: {ctx.isOpenGLES()}")
 vp = QOpenGLVersionProfile()
 vp.setVersion(2, 0)
 
-vf = ctx.versionFunctions(vp)
+vf = QOpenGLVersionFunctionsFactory.get(vp, ctx)
 print(f"Vendor: {vf.glGetString(vf.GL_VENDOR)}")
 print(f"Renderer: {vf.glGetString(vf.GL_RENDERER)}")
 print(f"Version: {vf.glGetString(vf.GL_VERSION)}")

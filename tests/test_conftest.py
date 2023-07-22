@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2015-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -41,7 +39,7 @@ def test_no_qapp(request):
 
 def test_fail_on_warnings():
     with pytest.raises(PendingDeprecationWarning):
-        warnings.warn('test', PendingDeprecationWarning, stacklevel=2)
+        warnings.warn('test', PendingDeprecationWarning)
 
 
 @pytest.mark.xfail(reason="https://github.com/qutebrowser/qutebrowser/issues/1070",

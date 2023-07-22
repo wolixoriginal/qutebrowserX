@@ -1,5 +1,3 @@
-# vim: ft=python fileencoding=utf-8 sts=4 sw=4 et:
-
 # Copyright 2014-2021 Florian Bruhin (The Compiler) <mail@qutebrowser.org>
 #
 # This file is part of qutebrowser.
@@ -25,7 +23,7 @@ import functools
 from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Mapping,
                     MutableMapping, MutableSequence, Optional, Tuple, cast)
 
-from PyQt5.QtCore import pyqtSignal, QObject, QUrl
+from qutebrowser.qt.core import pyqtSignal, QObject, QUrl
 
 from qutebrowser.commands import cmdexc, parser
 from qutebrowser.config import configdata, configexc, configutils
@@ -560,15 +558,18 @@ class Config(QObject):
                 log.config.debug("{} was mutated, updating".format(name))
                 self.set_obj(name, new_value, save_yaml=save_yaml)
 
-    def dump_userconfig(self) -> str:
+    def dump_userconfig(self, *, include_hidden: bool = False) -> str:
         """Get the part of the config which was changed by the user.
+
+        Args:
+            include_hidden: Include default scoped configs.
 
         Return:
             The changed config part as string.
         """
         lines: List[str] = []
         for values in sorted(self, key=lambda v: v.opt.name):
-            lines += values.dump()
+            lines += values.dump(include_hidden=include_hidden)
 
         if not lines:
             return '<Default configuration>'
